@@ -38,12 +38,14 @@
 
 require(taxize)
 download_refseq <- function(taxon,reference = TRUE,
-                            representative = FALSE,
-                            compress=TRUE,patho_out=FALSE){
-  taxon_list <- c(taxon_all$superkingdom,taxon_all$kingdom,
-                  taxon_all$phylum,taxon_all$class,taxon_all$order,
-                  taxon_all$family,taxon_all$genus,taxon_all$species,
-                  taxon_all$strain)
+                                representative = FALSE,
+                                compress=TRUE,patho_out=FALSE){
+  taxonomy_link <- "https://raw.githubusercontent.com/Xudong-Han/MetaScope/master/data/taxonomy.txt"
+  taxonomy.table <- read.table(taxonomy_link, header = T, sep = "\t")
+  taxon_list <- c(taxonomy.table$superkingdom, taxonomy.table$kingdom,
+                  taxonomy.table$phylum, taxonomy.table$class, taxonomy.table$order,
+                  taxonomy.table$family, taxonomy.table$genus, taxonomy.table$species,
+                  taxonomy.table$strain)
   taxon_list <- taxon_list[!is.na(taxon_list)]
   ## check if user provided a vaild taxon
   if (!taxon %in% taxon_list){
@@ -57,7 +59,7 @@ download_refseq <- function(taxon,reference = TRUE,
   ## get the ncbi scinames of children species or strains
   ## if input has children strains:
   
-  children_list <- get_children(taxon,rank_input)
+  children_list <- get_children(taxon,rank_input,data = taxonomy.table)
   
   ## filter the table, keep the lines with species or strains of input
   species_table <- kingdom_table[which(kingdom_table$organism_name %in% children_list),]
