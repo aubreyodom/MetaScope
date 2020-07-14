@@ -1,28 +1,74 @@
-{
-  taxonomy_link <- "https://raw.githubusercontent.com/Xudong-Han/MetaScope/master/data/taxonomy.txt"
-  taxonomy.table <- read.table(taxonomy_link, header = T, sep = "\t")
-  taxon_list <- c(taxonomy.table$superkingdom, taxonomy.table$kingdom,
-                  taxonomy.table$phylum, taxonomy.table$class, taxonomy.table$order,
-                  taxonomy.table$family, taxonomy.table$genus, taxonomy.table$species,
-                  taxonomy.table$strain)
-  taxon_list <- taxon_list[!is.na(taxon_list)]
-  ## check if user provided a vaild taxon
-  if (!taxon %in% taxon_list){
-    stop("Your input is not a valid taxon")
-  }
+#' Download RefSeq genome libraries
+#'
+#' This function will automatically download RefSeq genome libraries in a
+#' .fasta format from the specified taxon. The function will first
+#' download the summary report at:
+#' '''?kingdom_table''',
+#' and then use this file to download genomes and combine them in a single
+#' compressed or uncompressed .fasta file.
+#' @param taxon Select one taxon to download.
+#' The taxon name should be NCBI sciname. 
+#' @param reference Download only RefSeq reference genomes?
+#' Defaults to \code{TRUE}.
+#' Automatically set to \code{TRUE} if \code{representative = TRUE}.
+#' @param representative Download only RefSeq representative genomes?
+#' Defaults to \code{FALSE}.
+#' If \code{TRUE}, reference is automatically set at \code{TRUE}.
+#' @param compress Compress the output .fasta file? Defaults to \code{TRUE}.
+#' @param patho_out Create duplicate outpute files compatible with PathoScope?
+#' Defaults to \code{FALSE}.
+#' @return Returns a .fasta or .fasta.gz file of the desired RefSeq genomes.
+#' This file is named after the kindom selectd and saved to the current
+#' directory (e.g. 'bacteria.fasta.gz'). Currently, this function also returns
+#' a .fasta file formatted for PathoScope as well
+#' (e.g. bacteria.pathoscope.fasta.gz') if \code{path_out = TRUE}.
+#'
+#' @examples
+#' ## Download all RefSeq reference bacterial genomes
+#' download_refseq('bacteria')
+#'
+#' ## Download all RefSeq representative viral genomes
+#' download_refseq( 'viral', representative = TRUE )
+#'
+#' ## Download all RefSeq viral genomes
+#' download_refseq( 'viral', reference = FALSE )
+#'
+#' @export
+#' 
+
+require(taxize)
+download_refseq <- function(taxon,reference = TRUE,
+                                representative = FALSE,
+                                compress=TRUE,patho_out=FALSE){
+
   ## get the rank of the input taxon
-  classification.table <- classification(get_uid(taxon,messages=F)[[1]],
-                                         db = 'ncbi')[[1]]
+  tryCatch({classification.table <- classification(get_uid(taxon,messages=F)[[1]],
+                                         db = 'ncbi')[[1]]},
+           warning=function(w){stop("Your input is not a valid taxon")}
+           )
   rank_input <- classification.table$rank[nrow(classification.table)]
   message(taxon," is a ",rank_input)
   
+  # Loading the taxonomy table
+  taxonomy_link <- "https://raw.githubusercontent.com/Xudong-Han/MetaScope/master/data/taxonomy.txt"
+  message("Loading the taxonomy table")
+  taxonomy.table <- read.table(taxonomy_link, header = T, 
+                               sep = "\t",
+                               stringsAsFactors = F)
+
   ## get the ncbi scinames of children species or strains
   children_list <- get_children(taxon,rank_input,data = taxonomy.table)
-  
-  ## get the parent taxon in superkingdom rank
 
+  ## get the parent taxon in kingdom rank
+  parent_kingdom <- classification.table$name[classification.table$rank=="kingdom"]
+  if (identical(parent_kingdom,character(0))){
+    parent_kingdom <- classification.table$name[classification.table$rank=="superkingdom"]
+  }
+  parent_kingdom <- tolower(parent_kingdom)
   ## download the assembly summary refseq table from ncbi which includes genome download link
-  refseq_link <- "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary.txt"
+  refseq_link <- paste("ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/", parent_kingdom,
+                       "/assembly_summary.txt", sep = "")
+  message(paste("Loading the refseq table for",parent_kingdom))
   refseq_table <- read.table(refseq_link, header = T, sep = "\t",
                              comment.char = "",
                              quote = "", skip = 1)
