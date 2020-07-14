@@ -1,15 +1,13 @@
 #' Download RefSeq genome libraries
 #'
 #' This function will automatically download RefSeq genome libraries in a
-#' .fasta format from the specified kingdom. The function will first
+#' .fasta format from the specified taxon. The function will first
 #' download the summary report at:
-#' ftp://ftp.ncbi.nlm.nih.gov/genomes/**kingdom**/overview.txt,
+#' '''?kingdom_table''',
 #' and then use this file to download genomes and combine them in a single
 #' compressed or uncompressed .fasta file.
-#' @param kingdom Select the kingdom taxonomy to download.
-#' Options are \code{'archaea'}, \code{'bacteria'}, \code{'fungi'},
-#' \code{'invertebrate'}, \code{'plant'}, \code{'protozoa'},
-#' \code{'vertebrate_mammalian'}, \code{'vertebrate_other'}, or \code{'viral'}.
+#' @param taxon Select one taxon to download.
+#' The taxon name should be NCBI sciname. 
 #' @param reference Download only RefSeq reference genomes?
 #' Defaults to \code{TRUE}.
 #' Automatically set to \code{TRUE} if \code{representative = TRUE}.
@@ -38,108 +36,119 @@
 #' @export
 #' 
 
-download_refseq <- function(kingdom, reference = TRUE,
+require(taxize)
+download_refseq <- function(taxon,reference = TRUE,
                             representative = FALSE,
-                            compress = TRUE, patho_out = FALSE) {
-  ## check if user provided a valid kingdom
-  kingdom_list <- c("archaea", "bacteria", "fungi", "invertebrate", "plant",
-                    "protozoa", "vertebrate_mammalian", "vertebrate_other", "viral")
-  if (!(kingdom %in% kingdom_list)) {
-    stop("You supplied a kingdom not in the kingdom list")
+                            compress=TRUE,patho_out=FALSE){
+  taxon_list <- c(taxon_all$superkingdom,taxon_all$kingdom,
+                  taxon_all$phylum,taxon_all$class,taxon_all$order,
+                  taxon_all$family,taxon_all$genus,taxon_all$species,
+                  taxon_all$strain)
+  taxon_list <- taxon_list[!is.na(taxon_list)]
+  ## check if user provided a vaild taxon
+  if (!taxon %in% taxon_list){
+    stop("Your input is not a valid taxon")
   }
-
-  ## Download refseq table
-  table_name <- paste("ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/", kingdom,
-                      "/assembly_summary.txt", sep = "")
-  message(paste("Downloading kingdom assembly list from:", table_name))
-  kingdom_table <- read.table(table_name, header = T, sep = "\t",
-                              comment.char = "",
-                              quote = "", skip = 1)
-
+  ## get the rank of the input taxon
+  classification.table <- classification(get_uid(taxon,messages=F)[[1]],
+                                         db = 'ncbi')[[1]]
+  rank_input <- classification.table$rank[nrow(classification.table)]
+  message(taxon," is a ",rank_input)
+  ## get the ncbi scinames of children species or strains
+  ## if input has children strains:
+  
+  children_list <- get_children(taxon,rank_input)
+  
+  ## filter the table, keep the lines with species or strains of input
+  species_table <- kingdom_table[which(kingdom_table$organism_name %in% children_list),]
+  
   ## Reduce the table size based on reference or represenative
   if (representative) {
     reference <- TRUE
   }
   if (representative & reference) {
-    king_table <- kingdom_table[kingdom_table$refseq_category %in%
-                                  c("reference genome",
-                                    "representative genome"), ]
+    species_table <- species_table[species_table$refseq_category %in%
+                                     c("reference genome",
+                                       "representative genome"), ]
   } else {
     if (!representative & reference) {
-      king_table <- kingdom_table[kingdom_table$refseq_category ==
-                                    "reference genome", ]
+      species_table <- species_table[species_table$refseq_category ==
+                                       "reference genome", ]
+    } 
+  }
+  total_genomes <- nrow(species_table)
+  if (total_genomes == 0){
+    message("No availabe genome for ",taxon)
+  } else{
+    message(paste("Downloading", total_genomes, taxon, "genomes from RefSeq"))
+    
+    ## delete existing genome files and combined fasta--make these user-defined
+    
+    download_dir <- paste(taxon, "refseq_download", sep = "_")
+    # remove any existing files/directories
+    unlink(download_dir, recursive = TRUE, force = TRUE)
+    if (compress) {
+      combined_fasta <- paste(taxon, "fasta.gz", sep = ".")
+      combined_fasta_patho <- paste(taxon, "pathoscope.fasta.gz", sep = ".")
     } else {
-      king_table <- kingdom_table
+      combined_fasta <- paste(taxon, "fasta", sep = ".")
+      combined_fasta_patho <- paste(taxon, "pathoscope.fasta", sep = ".")
     }
-  }
-  total_genomes <- nrow(king_table)
-  message(paste("Downloading", total_genomes, kingdom, "genomes from RefSeq"))
-
-  ## delete existing genome files and combined fasta--make these user-defined
-
-  download_dir <- paste(kingdom, "refseq_download", sep = "_")
-  # remove any existing files/directories
-  unlink(download_dir, recursive = TRUE, force = TRUE)
-  if (compress) {
-    combined_fasta <- paste(kingdom, "fasta.gz", sep = ".")
-    combined_fasta_patho <- paste(kingdom, "pathoscope.fasta.gz", sep = ".")
-  } else {
-    combined_fasta <- paste(kingdom, "fasta", sep = ".")
-    combined_fasta_patho <- paste(kingdom, "pathoscope.fasta", sep = ".")
-  }
-  tryCatch({
-    suppressWarnings(file.remove(combined_fasta))
-    suppressWarnings(file.remove(combined_fasta_patho))
-  })  # start with a new combined file
-
-  ## Download genomes
-  for (i in 1:nrow(king_table)) {
+    
     tryCatch({
-      if (i%%10 == 0) {
-        message(paste("Number of Genomes Downloaded: ", i, "/",
-                      total_genomes, " (", round(100 * i/total_genomes, 2),
-                      "%)", sep = ""))
-      }
-
-      ## Download the genome
-      genome_file <- paste(basename(as.character(king_table[i, ]$ftp_path)),
-                           "genomic.fna.gz", sep = "_")
-      location <- paste(king_table[i, ]$ftp_path, genome_file, sep = "/")
-      destination <- paste(download_dir, genome_file, sep = "/")
-      if (!dir.exists(download_dir)) {
-        dir.create(download_dir)
-      }
-      download.file(location, destination)
-
-      ## read in the genome
-      ref <- Biostrings::readDNAStringSet(destination)
-
-      ## write to file
-      Biostrings::writeXStringSet(ref, combined_fasta, append = T,
-                                  compress = compress)
-
-      ## format for pathoscope and write to file
-      accession <- NULL
-      for (j in strsplit(names(ref), " ")) {
-        accession <- c(accession, j[1])
-      }
-      names(ref) <- paste("ti|", king_table[i, ]$taxid, "|org|",
-                          gsub(" ", "_", king_table[i, ]$organism_name),
-                          "|accession|", accession, sep = "")
-      Biostrings::writeXStringSet(ref, combined_fasta_patho, append = T,
-                                  compress = compress)
-
-      ## delete intermediate download files
-      unlink(download_dir, recursive = TRUE, force = TRUE)
-    }, error = function(e) {
-      cat("ERROR :", conditionMessage(e), "\n")
-    })
+      suppressWarnings(file.remove(combined_fasta))
+      suppressWarnings(file.remove(combined_fasta_patho))
+    }) # start with a new combined file
+    
+    ## Download the genome
+    for (i in 1:nrow(species_table)) {
+      tryCatch({
+        if (i%%10 == 0) {
+          message(paste("Number of Genomes Downloaded: ", i, "/",
+                        total_genomes, " (", round(100 * i/total_genomes, 2),
+                        "%)", sep = ""))
+        }
+        
+        ## Download the genome
+        genome_file <- paste(basename(as.character(species_table[i, ]$ftp_path)),
+                             "genomic.fna.gz", sep = "_")
+        location <- paste(species_table[i, ]$ftp_path, genome_file, sep = "/")
+        destination <- paste(download_dir, genome_file, sep = "/")
+        if (!dir.exists(download_dir)) {
+          dir.create(download_dir)
+        }
+        download.file(location, destination)
+        
+        ## read in the genome
+        ref <- Biostrings::readDNAStringSet(destination)
+        
+        ## write to file
+        Biostrings::writeXStringSet(ref, combined_fasta, append = T,
+                                    compress = compress)
+        
+        ## format for pathoscope and write to file
+        accession <- NULL
+        for (j in strsplit(names(ref), " ")) {
+          accession <- c(accession, j[1])
+        }
+        names(ref) <- paste("ti|", species_table[i, ]$taxid, "|org|",
+                            gsub(" ", "_", species_table[i, ]$organism_name),
+                            "|accession|", accession, sep = "")
+        Biostrings::writeXStringSet(ref, combined_fasta_patho, append = T,
+                                    compress = compress)
+        
+        ## delete intermediate download files
+        unlink(download_dir, recursive = TRUE, force = TRUE)
+      }, error = function(e) {
+        cat("ERROR :", conditionMessage(e), "\n")
+      })
+    }
+    # Remove pathoscope file if unwanted
+    if (!patho_out) file.remove(combined_fasta_patho)
+    
+    # Ensure removal of intermediate folder of files
+    unlink("viral_refseq_download", recursive = TRUE, force = TRUE)
+    
+    message("DONE! Downloaded ", i, " genomes to ", combined_fasta)
   }
-  # Remove pathoscope file if unwanted
-  if (!patho_out) file.remove(combined_fasta_patho)
-
-  # Ensure removal of intermediate folder of files
-  unlink("viral_refseq_download", recursive = TRUE, force = TRUE)
-
-  message("DONE! Downloaded", i, "genomes to", combined_fasta, sep = " ")
 }
