@@ -28,7 +28,7 @@
 
 get_children <- function(input_taxon,
                          input_rank,
-                         data=taxon_all){
+                         data){
   ## get the children strains
   strain_list <- unique(data[,"strain"][data[,input_rank] %in% input_taxon])
   strain_list <- strain_list[!is.na(strain_list)]
