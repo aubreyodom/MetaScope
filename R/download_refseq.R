@@ -1,45 +1,4 @@
-#' Download RefSeq genome libraries
-#'
-#' This function will automatically download RefSeq genome libraries in a
-#' .fasta format from the specified taxon. The function will first
-#' download the summary report at:
-#' '''?kingdom_table''',
-#' and then use this file to download genomes and combine them in a single
-#' compressed or uncompressed .fasta file.
-#' @param taxon Select one taxon to download.
-#' The taxon name should be NCBI sciname. 
-#' @param reference Download only RefSeq reference genomes?
-#' Defaults to \code{TRUE}.
-#' Automatically set to \code{TRUE} if \code{representative = TRUE}.
-#' @param representative Download only RefSeq representative genomes?
-#' Defaults to \code{FALSE}.
-#' If \code{TRUE}, reference is automatically set at \code{TRUE}.
-#' @param compress Compress the output .fasta file? Defaults to \code{TRUE}.
-#' @param patho_out Create duplicate outpute files compatible with PathoScope?
-#' Defaults to \code{FALSE}.
-#' @return Returns a .fasta or .fasta.gz file of the desired RefSeq genomes.
-#' This file is named after the kindom selectd and saved to the current
-#' directory (e.g. 'bacteria.fasta.gz'). Currently, this function also returns
-#' a .fasta file formatted for PathoScope as well
-#' (e.g. bacteria.pathoscope.fasta.gz') if \code{path_out = TRUE}.
-#'
-#' @examples
-#' ## Download all RefSeq reference bacterial genomes
-#' download_refseq('bacteria')
-#'
-#' ## Download all RefSeq representative viral genomes
-#' download_refseq( 'viral', representative = TRUE )
-#'
-#' ## Download all RefSeq viral genomes
-#' download_refseq( 'viral', reference = FALSE )
-#'
-#' @export
-#' 
-
-require(taxize)
-download_refseq <- function(taxon,reference = TRUE,
-                                representative = FALSE,
-                                compress=TRUE,patho_out=FALSE){
+{
   taxonomy_link <- "https://raw.githubusercontent.com/Xudong-Han/MetaScope/master/data/taxonomy.txt"
   taxonomy.table <- read.table(taxonomy_link, header = T, sep = "\t")
   taxon_list <- c(taxonomy.table$superkingdom, taxonomy.table$kingdom,
@@ -56,13 +15,19 @@ download_refseq <- function(taxon,reference = TRUE,
                                          db = 'ncbi')[[1]]
   rank_input <- classification.table$rank[nrow(classification.table)]
   message(taxon," is a ",rank_input)
-  ## get the ncbi scinames of children species or strains
-  ## if input has children strains:
   
+  ## get the ncbi scinames of children species or strains
   children_list <- get_children(taxon,rank_input,data = taxonomy.table)
   
+  ## get the parent taxon in superkingdom rank
+
+  ## download the assembly summary refseq table from ncbi which includes genome download link
+  refseq_link <- "ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/assembly_summary.txt"
+  refseq_table <- read.table(refseq_link, header = T, sep = "\t",
+                             comment.char = "",
+                             quote = "", skip = 1)
   ## filter the table, keep the lines with species or strains of input
-  species_table <- kingdom_table[which(kingdom_table$organism_name %in% children_list),]
+  species_table <- refseq_table[which(refseq_table$organism_name %in% children_list),]
   
   ## Reduce the table size based on reference or represenative
   if (representative) {
