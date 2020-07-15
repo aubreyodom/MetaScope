@@ -46,8 +46,9 @@ download_refseq <- function(taxon,reference = TRUE,
                                          db = 'ncbi')[[1]]},
            warning=function(w){stop("Your input is not a valid taxon")}
            )
+  message(paste("Find",taxon,"!"))
   rank_input <- classification.table$rank[nrow(classification.table)]
-  message(taxon," is a ",rank_input)
+  
   
   # Loading the taxonomy table
   taxonomy_link <- "https://raw.githubusercontent.com/Xudong-Han/MetaScope/master/data/taxonomy.txt"
@@ -61,9 +62,13 @@ download_refseq <- function(taxon,reference = TRUE,
 
   ## get the parent taxon in kingdom rank
   parent_kingdom <- classification.table$name[classification.table$rank=="kingdom"]
+  parent_rank <- "Kingdom"
   if (identical(parent_kingdom,character(0))){
     parent_kingdom <- classification.table$name[classification.table$rank=="superkingdom"]
+    parent_rank <- "Superkingdom"
   }
+  
+  message(paste(taxon,"is a",rank_input,"under the",parent_kingdom,parent_rank))
   parent_kingdom <- tolower(parent_kingdom)
   ## download the assembly summary refseq table from ncbi which includes genome download link
   refseq_link <- paste("ftp://ftp.ncbi.nlm.nih.gov/genomes/refseq/", parent_kingdom,
