@@ -22,7 +22,8 @@ mk_interim_fastq <- function(bf, read_loc, maxMemory) {
         as.character() %>% .[ind] %>% dplyr::tibble(
             Header = innames[ind], Sequence = ., Quality = inqual) %>%
         # Keep first occurrences of reads
-        dplyr::mutate(Plus = "+", Header = str_c("@", .data$Header)) %>%
+        dplyr::mutate(Plus = "+",
+                      Header = stringr::str_c("@", .data$Header)) %>%
         dplyr::select(.data$Header, .data$Sequence, .data$Plus,
                       .data$Quality) %>%
         as.matrix() %>% t() %>% as.character() %>% dplyr::as_tibble() %>%
@@ -248,8 +249,6 @@ filter_host_bowtie <- function(reads_bam, lib_dir, libs,
                                    "filtered", "bam", sep = "."),
                                bowtie2_options = NULL, threads = 8,
                                overwrite = FALSE, maxMemory = 512) {
-
-    suppressPackageStartupMessages(library(ShortRead)) # Error occurs within function below otherwise
     # If no optional parameters are passed then use default parameters else use user parameters 
     if (missing(bowtie2_options)) {
         bowtie2_options <- paste("--very-sensitive-local -k 100",
